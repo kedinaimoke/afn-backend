@@ -1,4 +1,4 @@
-# SECURED MESSAGING SYSTEM FOR THE ARMED FORCES OF NIGERIA
+# MESSAGING APPLICATION FOR THE ARMED FORCES OF NIGERIA (AFNCOM)
 
 This document outlines the design and key components of a secured messaging system specifically tailored for the Armed Forces of Nigeria. The app allows for efficient and secure communication among personnel, while ensuring data integrity and confidentiality.
 
