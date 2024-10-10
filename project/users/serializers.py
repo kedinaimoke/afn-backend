@@ -10,6 +10,13 @@ import re
 User = get_user_model()
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for user registration.
+
+    - Validates passwords to ensure they meet complexity requirements.
+    - Hashes the password before saving the user.
+    - Generates the official_name from first, middle, and last names.
+    """
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
 
@@ -47,6 +54,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class UserLoginSerializer(serializers.Serializer):
+    """
+    Serializer for user login.
+
+    - Authenticates user based on official_name and password.
+    """
     official_name = serializers.CharField(max_length=255)
     password = serializers.CharField(max_length=128, write_only=True)
 
@@ -63,6 +75,11 @@ class UserLoginSerializer(serializers.Serializer):
         return data
 
 class ServiceNumberSerializer(serializers.Serializer):
+    """
+    Serializer for validating a service number.
+
+    - Checks if the service number exists in the Personnel model.
+    """
     service_number = serializers.CharField(max_length=20)
 
     def validate_service_number(self, value):
@@ -71,6 +88,12 @@ class ServiceNumberSerializer(serializers.Serializer):
         return value
     
 class OfficialNameSerializer(serializers.Serializer):
+    """
+    Serializer for validating official name based on service number.
+
+    - Retrieves user by service number.
+    - Compares expected official name (constructed from first, middle, and last names) with the provided official_name.
+    """
     service_number = serializers.CharField(max_length=20)
     official_name = serializers.CharField(max_length=255)
 
@@ -91,6 +114,13 @@ class OfficialNameSerializer(serializers.Serializer):
 
 
 class PhoneNumberSerializer(serializers.Serializer):
+    """
+    Serializer for phone number verification.
+
+    - Validates the service number to ensure it exists.
+    - Checks if the provided phone number matches the one associated with the service number in the Personnel model.
+    - Calls the `send_otp` function (assumed to be implemented elsewhere) to send an OTP (One-Time Password) to the phone number and email address of the user.
+    """
     service_number = serializers.CharField(max_length=20)
     phone_number = serializers.CharField(max_length=15)
 
@@ -108,6 +138,15 @@ class PhoneNumberSerializer(serializers.Serializer):
         return data
 
 class PasswordCreationSerializer(serializers.Serializer):
+    """
+    Serializer for password creation.
+
+    - Validates the service number to ensure it exists.
+    - Validates the password complexity using regular expressions.
+    - Checks if passwords match and throws an error if not.
+    - Retrieves the user by service number.
+    - Sets the new password using `make_password` and saves the user.
+    """
     service_number = serializers.CharField(max_length=20)
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
@@ -142,6 +181,13 @@ class PasswordCreationSerializer(serializers.Serializer):
         personnel.save()
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user profiles.
+
+    - Inherits from `serializers.ModelSerializer` for automatic field generation.
+    - Defines `Meta` class to specify the model and fields for serialization.
+    - Overrides the `update` method to selectively update user profile fields.
+    """
     class Meta:
         model = Personnel
         fields = ('first_name', 'middle_name', 'surname', 'phone_number', 'rank', 'course')
@@ -157,6 +203,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return instance
 
 class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Serializer for changing a user's password.
+
+    - Requires both the old and new password.
+    - Validates the new password for complexity requirements.
+    - Compares the old password with the stored password.
+    """
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
 
@@ -174,6 +227,14 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating user profiles, including optional profile picture.
+
+    - Inherits from `serializers.ModelSerializer` for automatic field generation.
+    - Defines `Meta` class to specify the model and fields for serialization.
+    - Includes an optional `profile_picture` field for uploading profile images.
+    - Overrides the `update` method to selectively update user profile fields and handle profile picture upload.
+    """
     profile_picture = serializers.ImageField(required=False)
 
     class Meta:
@@ -181,6 +242,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ('first_name', 'middle_name', 'surname', 'phone_number', 'rank', 'course', 'profile_picture')
 
     def update(self, instance, validated_data):
+        """
+        Updates specific user profile fields based on provided data and handles profile picture upload.
+
+        - Retrieves updated values for each field from validated_data.
+        - Sets the instance's attributes with the updated values (or keeps them unchanged if not provided).
+        - Specifically checks for "profile_picture" in validated_data.
+        - If provided, updates the instance.profile_picture attribute with the new image file.
+        - Saves the updated user profile instance.
+        """
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.middle_name = validated_data.get('middle_name', instance.middle_name)
         instance.surname = validated_data.get('surname', instance.surname)

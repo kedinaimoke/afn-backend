@@ -6,4 +6,7 @@ urlpatterns = [
     path('get-messages/', views.get_messages, name='get_messages'),
     path('mark-as-read/', views.mark_as_read, name='mark_as_read'),
     path('thread/<int:thread_id>/', views.message_thread, name='message_thread'),
+    path('create-group-thread/', views.create_group_thread, name='create_group_thread'),
+    path('thread/<int:thread_id>/add-participant/', views.add_participant_to_thread, name='add_participant_to_thread'),
+    path('thread/<int:thread_id>/remove-participant/', views.remove_participant_from_thread, name='remove_participant_from_thread'),
 ]

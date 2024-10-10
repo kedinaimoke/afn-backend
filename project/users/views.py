@@ -15,6 +15,8 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from .serializers import UserRegistrationSerializer, UserLoginSerializer, OfficialNameSerializer, UserProfileSerializer, ChangePasswordSerializer
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import update_session_auth_hash
+from django.contrib.sessions.models import Session
+from django.utils import timezone
 import json
 
 @api_view(['POST'])
@@ -30,6 +32,11 @@ def login(request):
     serializer = UserLoginSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.validated_data['user']
+
+        existing_sessions = Session.objects.filter(expire_date__gt=timezone.now())
+        for session in existing_sessions:
+            if session.get_decoded().get('_auth_user_id') == str(user.id):
+                session.delete()
 
         refresh = RefreshToken.for_user(user)
         return Response({

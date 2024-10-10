@@ -7,3 +7,4 @@ class PersonnelAdmin(admin.ModelAdmin):
     search_fields = ('first_name', 'surname', 'email', 'rank__rank_name')
     list_filter = ('rank', 'arm_of_service')
     ordering = ('surname', 'first_name')
+    list_per_page = 50
