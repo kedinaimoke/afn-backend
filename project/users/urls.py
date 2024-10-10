@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views import register, login
 
 urlpatterns = [
     path('check_service_number/', views.check_service_number, name='check_service_number'),
@@ -9,6 +10,11 @@ urlpatterns = [
     path('check_email/', views.check_email, name='check_email'),
     path('verify_email_otp/', views.verify_email_otp, name='verify_email_otp'),
     path('set_password/', views.set_password, name='set_password'),
-     path('request-password-reset/', views.request_password_reset, name='request_password_reset'),
+    path('request-password-reset/', views.request_password_reset, name='request_password_reset'),
     path('reset-password/<uidb36>/<token>/', views.reset_password, name='reset_password'),
+    path('api/register/', register, name='register'),
+    path('api/login/', login, name='login'),
+    path('profile/', views.user_profile, name='user_profile'),
+    path('profile/change-password/', views.change_password, name='change_password'),
+    path('profile/upload-picture/', views.update_profile_picture, name='update_profile_picture'),
 ]

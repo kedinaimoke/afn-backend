@@ -1,37 +1,61 @@
-CREATE TABLE headquarters (
-    headquarter_id SERIAL PRIMARY KEY,
-    headquarter_name VARCHAR(255) UNIQUE NOT NULL
+CREATE SCHEMA military_schema;
+SET search_path TO military_schema;
+
+
+CREATE TABLE ArmOfService (
+    arm_of_service_id SERIAL PRIMARY KEY,
+    arm_of_service_name VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE directorates (
+CREATE TABLE Headquarters (
+    headquarters_id SERIAL PRIMARY KEY,
+    headquarters_name VARCHAR(100) NOT NULL,
+    arm_of_service_id INT REFERENCES ArmOfService(arm_of_service_id)
+);
+
+CREATE TABLE Directorates (
     directorate_id SERIAL PRIMARY KEY,
-    headquarter_id INT REFERENCES headquarters(headquarter_id) ON DELETE CASCADE,
-    directorate_name VARCHAR(255) NOT NULL
+    directorate_name VARCHAR(100) NOT NULL,
+    headquarters_id INT REFERENCES Headquarters(headquarters_id)
 );
 
-CREATE TABLE teams (
+CREATE TABLE Teams (
     team_id SERIAL PRIMARY KEY,
-    directorate_id INT REFERENCES directorates(directorate_id) ON DELETE CASCADE,
-    team_name VARCHAR(255) NOT NULL
+    team_name VARCHAR(100) NOT NULL,
+    directorate_id INT REFERENCES Directorates(directorate_id)
 );
 
-CREATE TABLE staff (
-    staff_id SERIAL PRIMARY KEY,
-    service_number VARCHAR(15) UNIQUE NOT NULL,
-    official_name VARCHAR(255) NOT NULL,
-    first_name VARCHAR(255) NOT NULL,
-    middle_name VARCHAR(255),
-    last_name VARCHAR(255) NOT NULL,
-    phone_number VARCHAR(15) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    headquarter_id INT REFERENCES headquarters(headquarter_id) ON DELETE SET NULL, -- a staff can only belong to one headquarter at a time
-	directorate_id INT REFERENCES directorates(directorate_id) ON DELETE SET NULL -- a staff can only belong to one directorate at a time
+CREATE TABLE Course (
+    course_id SERIAL PRIMARY KEY,
+    course_name VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE staff_teams (
-    staff_id INT REFERENCES staff(staff_id) ON DELETE CASCADE,
-    team_id INT REFERENCES teams(team_id) ON DELETE CASCADE,
-    PRIMARY KEY (staff_id, team_id)
+CREATE TABLE Rank (
+    rank_id SERIAL PRIMARY KEY,
+    rank_name VARCHAR(100) NOT NULL
 );
 
--- CREATE EXTENSION system_stats;
+CREATE TABLE Personnel (
+    personnel_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(15),
+    rank_id INT REFERENCES Rank(rank_id),
+    course_id INT REFERENCES Course(course_id),
+    directorate_id INT REFERENCES Directorates(directorate_id),
+    arm_of_service_id INT REFERENCES ArmOfService(arm_of_service_id)  -- Foreign Key if needed
+);
+
+CREATE TABLE Appointment (
+    appointment_id SERIAL PRIMARY KEY,
+    appointment_name VARCHAR(100) NOT NULL,
+    personnel_id INT REFERENCES Personnel(personnel_id),
+    headquarters_id INT REFERENCES Headquarters(headquarters_id)
+);
+
+CREATE TABLE PersonnelTeams (
+    personnel_id INT REFERENCES Personnel(personnel_id),
+    team_id INT REFERENCES Teams(team_id),
+    PRIMARY KEY (personnel_id, team_id)
+);
