@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views import register, login
+from .views import register, login, check_registered_users
 
 urlpatterns = [
     path('check_service_number/', views.check_service_number, name='check_service_number'),
@@ -17,4 +17,7 @@ urlpatterns = [
     path('profile/', views.user_profile, name='user_profile'),
     path('profile/change-password/', views.change_password, name='change_password'),
     path('profile/upload-picture/', views.update_profile_picture, name='update_profile_picture'),
+    path('personnel/', views.PersonnelListCreateView.as_view(), name='personnel-list-create'),
+    path('personnel/<int:pk>/', views.PersonnelDetailView.as_view(), name='personnel-detail'),
+    path('check_registered_users/', check_registered_users, name='check_registered_users'),
 ]

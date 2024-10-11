@@ -9,13 +9,16 @@ from django.core.mail import send_mail
 from django.conf import settings
 from project.otp_utils import generate_otp, send_otp, verify_otp, set_otp
 from .models import Personnel
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from .serializers import (UserRegistrationSerializer, UserLoginSerializer, OfficialNameSerializer,
-                           UserProfileSerializer, ChangePasswordSerializer)
+                           UserProfileSerializer, ChangePasswordSerializer, PersonnelSerializer,
+                           RegisteredUserSerializer)
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.views import APIView
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.sessions.models import Session
 from django.utils import timezone
@@ -119,7 +122,8 @@ def check_phone_number(request):
     """
     Method: POST
 
-    Description: Checks if the phone number matches the service number, then sends an OTP for verification.
+    Description: Checks if the phone number matches the service number, then 
+    sends an OTP for verification.
     
     Request: Expects service_number and phone_number in the request body.
     
@@ -227,7 +231,8 @@ def set_password(request):
     """
     Method: POST
     
-    Description: Allows the user to set a new password by verifying their official name and password match.
+    Description: Allows the user to set a new password by verifying their official 
+    name and password match.
     
     Request: Requires official_name, password, and confirm_password.
     
@@ -304,7 +309,8 @@ def reset_password(request, uidb36, token):
     
     Response:
     Success: Password is successfully reset.
-    Failure: Returns an error if the token is invalid, passwords do not match, or a database error occurs.
+    Failure: Returns an error if the token is invalid, passwords do not match, 
+    or a database error occurs.
     """
     data = json.loads(request.body)
     new_password = data.get('new_password')
@@ -413,3 +419,112 @@ def update_profile_picture(request):
         return Response({'status': 'Profile picture updated successfully'}, status=status.HTTP_200_OK)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class PersonnelListCreateView(generics.ListCreateAPIView):
+    """
+    Description: The PersonnelListCreateView is responsible for listing all personnel in the 
+    system & creating new personnel entries.
+
+    Methods:
+    GET: Returns a list of all personnel in the system.
+    POST: Creates a new personnel entry with the provided data.
+    
+    URL:/api/personnel/
+    
+    HTTP Methods Supported:
+    GET: Retrieve the list of personnel.
+    POST: Create a new personnel record.
+    
+    Authentication & Permissions:   
+    Authentication: TokenAuthentication is required. This means a valid authentication token 
+    needs to be provided in the header.
+    Permission: The user must be authenticated (IsAuthenticated) to access this endpoint.
+    
+    Request Headers (for both GET and POST):
+    Authorization: Token
+    """
+    queryset = Personnel.objects.all()
+    serializer_class = PersonnelSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+class PersonnelDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Description: The PersonnelDetailView is responsible for handling the following operations on a 
+    specific personnel record:
+    1. Retrieve details of a specific personnel by their personnel_id.
+    2. Update the personnel details.
+    3. Delete a personnel entry.
+    
+    URL:/api/personnel/<personnel_id>/
+
+    HTTP Methods Supported:
+    GET: Retrieve a single personnel entry.
+    PUT: Update a personnel entry.
+    PATCH: Partially update a personnel entry.
+    DELETE: Delete a personnel entry.
+
+    Authentication & Permissions:
+    Authentication: TokenAuthentication is required.
+    Permission: The user must be authenticated (IsAuthenticated) to access this endpoint.
+    
+    Request Headers (for GET, PUT, PATCH, DELETE):
+    Authorization: Token
+    """
+    queryset = Personnel.objects.all()
+    serializer_class = PersonnelSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+def check_registered_users(request):
+    """
+    Check which phone numbers belong to registered users.
+
+    Method: GET
+    
+    Request:
+    - Query parameter `phone_numbers`: A list of phone numbers to check.
+
+    Response:
+    - Returns a JSON response containing the registered users with their IDs, phone numbers, official names, service numbers, and emails.
+    """
+    phone_numbers = request.GET.getlist('phone_numbers')
+    registered_users = Personnel.objects.filter(phone_number__in=phone_numbers)
+    
+    response_data = {
+        "registered_users": [
+            {
+                "id": user.id,
+                "phone_number": user.phone_number,
+                "name": user.official_name,
+                "service_number": user.service_number,
+                "email": user.email
+            } 
+            for user in registered_users
+        ]
+    }
+    
+    return JsonResponse(response_data)
+
+class CheckRegisteredUsers(APIView):
+    """
+    API view to check which phone numbers belong to registered users.
+
+    Method: GET
+
+    Request:
+    - Query parameter `phone_numbers`: A list of phone numbers to check.
+
+    Response:
+    - Returns a JSON response containing the registered users with their IDs, phone numbers, official names, service numbers, and emails.    
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        phone_numbers = request.query_params.getlist('phone_numbers')
+        registered_users = Personnel.objects.filter(phone_number__in=phone_numbers)
+        serializer = RegisteredUserSerializer(registered_users, many=True)
+        
+        return Response({
+            "registered_users": serializer.data
+        })

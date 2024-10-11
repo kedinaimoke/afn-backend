@@ -35,8 +35,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             regex='^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$',
             message="Password must be at least 8 characters long, include one uppercase, one lowercase, one number, and one special character."
         )
-        password_validator(password)
+        try:
+            password_validator(password)
+        except Exception as e:
+            print(e)
+            raise serializers.ValidationError(str(e))
+
         return data
+
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')
@@ -261,3 +267,42 @@ class UserProfileSerializer(serializers.ModelSerializer):
             instance.profile_picture = validated_data['profile_picture']
         instance.save()
         return instance
+
+class PersonnelSerializer(serializers.ModelSerializer):
+    """
+    Description: A serializer for the Personnel model that includes all fields.
+    
+    Purpose: This serializer is used to convert Personnel instances into JSON 
+    format and to validate incoming data for creating or updating Personnel records.
+    
+    Meta Class:
+    Model: Personnel
+    Fields:
+    __all__: This indicates that all fields in the Personnel model will be included in 
+    the serialization process.
+    """
+    class Meta:
+        model = Personnel
+        fields = '__all__'
+
+class RegisteredUserSerializer(serializers.ModelSerializer):
+    """
+    Description: A serializer for the Personnel model that includes only specific fields 
+    relevant for registered users.
+    
+    Purpose: This serializer is used to serialize Personnel instances into JSON format, focusing on the fields that are essential for identifying registered users, such as their contact information and official name.
+    
+    Meta Class:
+    
+    Model: Personnel
+    
+    Fields:
+    id: The unique identifier for the personnel.
+    phone_number: The registered phone number of the personnel.
+    official_name: The official name of the personnel.
+    service_number: The unique service number of the personnel.
+    email: The email address of the personnel.
+    """
+    class Meta:
+        model = Personnel
+        fields = ['id', 'phone_number', 'official_name', 'service_number', 'email']

@@ -6,8 +6,17 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.files.storage import default_storage
 from .serializers import MessageSerializer, ThreadSerializer
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics
+from rest_framework.views import APIView
+from users.models import Personnel
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# cred = credentials.Certificate('path/to/the/serviceAccountKey.json')
+# firebase_admin.initialize_app(cred)
 
 ALLOWED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'video/mp4', 'audio/mpeg', 'application/pdf', 'application/octet-stream']
 MAX_MEDIA_SIZE = 200 * 1024**2
@@ -346,3 +355,227 @@ def react_to_message(request):
         return JsonResponse({'status': 'success'})
     except Message.DoesNotExist:
         return JsonResponse({'error': 'Message not found.'}, status=404)
+
+class SendMessageView(generics.CreateAPIView):
+    """
+    View to send a message between users.
+
+    This view allows authenticated users to send messages. The sender of the message is automatically
+    set to the currently authenticated user.
+
+    HTTP Methods:
+    - POST: Create a new message.
+
+    Request Body:
+    The request body should contain the following fields:
+        - recipient: The email or ID of the user to whom the message is being sent (required).
+        - content: The text content of the message (optional).
+        - media_type: The type of media attached to the message (optional; choices are 'text', 'image', 'video', 'file', 'audio').
+        - media_url: The URL of the media attached to the message (optional).
+
+    Response:
+    - On success, returns a 201 status code with the created message data.
+    - On failure, returns an appropriate error response.
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def perform_create(self, serializer):
+        recipient_phone_number = self.request.data.get('recipient_phone_number')
+        recipient = get_object_or_404(Personnel, phone_number=recipient_phone_number)
+        serializer.save(sender=self.request.user, recipient=recipient)
+
+class GetMessagesView(generics.ListAPIView):
+    """
+    View to retrieve messages for the authenticated user.
+
+    This view allows authenticated users to retrieve a list of messages sent to them.
+
+    HTTP Methods:
+    - GET: Retrieve a list of messages.
+
+    Response:
+    - On success, returns a 200 status code with a list of messages.
+    - On failure, returns an appropriate error response.
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def get_queryset(self):
+        return Message.objects.filter(recipient=self.request.user)
+
+# def send_push_notification(token, title, body):
+#     message = messaging.Message(
+#         notification=messaging.Notification(
+#             title=title,
+#             body=body,
+#         ),
+#         token=token,
+#     )
+#     response = messaging.send(message)
+#     print('Successfully sent message:', response)
+
+class SharedMediaView(generics.ListAPIView):
+    """
+    Method: GET
+    
+    Description: Retrieves media messages (images, videos, audio files, and documents) 
+    shared between the authenticated user and a specified contact.
+    
+    URL Pattern: shared-media/<int:contact_id>/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Parameters:
+    contact_id: The ID of the contact with whom media was shared.
+    
+    Response: Returns a list of media messages ordered by timestamp (most recent first).
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def get_queryset(self):
+        contact_id = self.kwargs['contact_id']
+        return Message.objects.filter(
+            sender=self.request.user, recipient_id=contact_id
+        ).filter(
+            media_type__in=['image', 'video', 'audio', 'file']
+        ).order_by('-timestamp')
+
+class SharedLinksView(generics.ListAPIView):
+    """
+    Method: GET
+    
+    Description: Retrieves link messages shared between the authenticated user and a specified contact.
+    
+    URL Pattern: shared-links/<int:contact_id>/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Parameters:
+    contact_id: The ID of the contact with whom links were shared.
+    
+    Response: Returns a list of link messages ordered by timestamp (most recent first).
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def get_queryset(self):
+        contact_id = self.kwargs['contact_id']
+        return Message.objects.filter(
+            sender=self.request.user, recipient_id=contact_id
+        ).filter(media_type='link').order_by('-timestamp')
+
+class SharedDocsView(generics.ListAPIView):
+    """
+    Method: GET
+
+    Description: Retrieves document messages shared between the authenticated 
+    user and a specified contact.
+    
+    URL Pattern: shared-docs/<int:contact_id>/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Parameters:
+    contact_id: The ID of the contact with whom documents were shared.
+    
+    Response: Returns a list of document messages ordered by timestamp (most recent first).
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def get_queryset(self):
+        contact_id = self.kwargs['contact_id']
+        return Message.objects.filter(
+            sender=self.request.user, recipient_id=contact_id
+        ).filter(media_type='document').order_by('-timestamp')
+    
+class StarMessageView(APIView):
+    """
+    Method: POST
+
+    Description: Marks a specified message as starred by the authenticated user.
+    
+    URL Pattern: star-message/<int:message_id>/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Parameters:
+    message_id: The ID of the message to be starred.
+    
+    Response:
+    Success: Returns a message indicating that the message has been starred.
+    Failure: Returns an error if the message is not found.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def post(self, request, message_id):
+        """
+        Mark a message as starred by the current user.
+        """
+        try:
+            message = Message.objects.get(id=message_id)
+            message.starred_by.add(request.user)
+            return Response({"status": "Message starred"}, status=status.HTTP_200_OK)
+        except Message.DoesNotExist:
+            return Response({"error": "Message not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+class UnstarMessageView(APIView):
+    """
+    Method: POST
+
+    Description: Removes a star from a specified message for the authenticated user.
+    
+    URL Pattern: unstar-message/<int:message_id>/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Parameters:
+    message_id: The ID of the message to unstar.
+    
+    Response:
+    Success: Returns a message indicating that the message has been unstarred.
+    Failure: Returns an error if the message is not found.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def post(self, request, message_id):
+        """
+        Remove a star from a message for the current user.
+        """
+        try:
+            message = Message.objects.get(id=message_id)
+            message.starred_by.remove(request.user)
+            return Response({"status": "Message unstarred"}, status=status.HTTP_200_OK)
+        except Message.DoesNotExist:
+            return Response({"error": "Message not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class StarredMessagesView(generics.ListAPIView):
+    """
+    Method: GET
+    
+    Description: Retrieves all messages that have been starred by the authenticated user.
+    
+    URL Pattern: starred-messages/
+    
+    Permissions: Requires the user to be authenticated.
+    
+    Response: Returns a list of starred messages ordered by timestamp (most recent first).
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def get_queryset(self):
+        """
+        Return all the messages starred by the current user.
+        """
+        return Message.objects.filter(starred_by=self.request.user).order_by('-timestamp')

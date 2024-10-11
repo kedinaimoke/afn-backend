@@ -15,6 +15,7 @@ class Message(models.Model):
         - media_url: The URL of the media attached to the message (optional).
         - is_read: Indicates if the recipient has read the message.
         - timestamp: The timestamp when the message was sent.
+        - starred_by: The users who have starred (marked) the message.
     """
     MEDIA_TYPE_CHOICES = [
         ('text', 'Text'),
@@ -22,6 +23,8 @@ class Message(models.Model):
         ('video', 'Video'),
         ('file', 'File'),
         ('audio', 'Audio'),
+        ('link', 'Link'),
+        ('document', 'Document'),
     ]
 
     sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
@@ -31,6 +34,7 @@ class Message(models.Model):
     media_url = models.URLField(blank=True, null=True)
     is_read = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now_add=True)
+    starred_by = models.ManyToManyField(User, related_name='starred_messages', blank=True)
 
     def __str__(self):
         return f"Message from {self.sender} to {self.recipient}"
