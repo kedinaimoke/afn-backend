@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth import update_session_auth_hash
 from django.db import IntegrityError, DatabaseError
 from django.utils.http import base36_to_int, int_to_base36
 from django.core.mail import send_mail
@@ -12,7 +13,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-from .serializers import UserRegistrationSerializer, UserLoginSerializer, OfficialNameSerializer, UserProfileSerializer, ChangePasswordSerializer
+from .serializers import (UserRegistrationSerializer, UserLoginSerializer, OfficialNameSerializer,
+                           UserProfileSerializer, ChangePasswordSerializer)
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.sessions.models import Session
@@ -21,6 +23,17 @@ import json
 
 @api_view(['POST'])
 def register(request):
+    """
+    Method: POST
+    
+    Description: Registers a new user in the system.
+    
+    Request: Requires the user's registration data (e.g., official name, email, phone number, password).
+    
+    Response:
+    Success: Returns a success message and a status code of 201 Created.
+    Failure: Returns validation errors with a status code 400 Bad Request.
+    """
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
@@ -29,6 +42,17 @@ def register(request):
 
 @api_view(['POST'])
 def login(request):
+    """
+    Method: POST
+
+    Description: Authenticates a user based on their credentials (e.g., username/password).
+    
+    Request: Requires the user's official name and password.
+    
+    Response:
+    Success: Returns refresh and access JWT tokens, and a 200 OK status.
+    Failure: Returns validation errors with a status code 400 Bad Request.
+    """
     serializer = UserLoginSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.validated_data['user']
@@ -48,6 +72,17 @@ def login(request):
 
 @require_http_methods(["POST"])
 def check_service_number(request):
+    """
+    Method: POST
+    
+    Description: Verifies if a given service number exists.
+    
+    Request: The service number is passed in the body of the request.
+    
+    Response:
+    Success: Returns a success status if the service number exists.
+    Failure: Returns an error if the service number is invalid or not found.
+    """
     data = json.loads(request.body)
     service_number = data.get('service_number')
 
@@ -60,6 +95,17 @@ def check_service_number(request):
 
 @require_http_methods(["POST"])
 def check_official_name(request):
+    """
+    Method: POST
+    
+    Description: Verifies if the given official name exists.
+    
+    Request: Accepts official name data and validates it using the OfficialNameSerializer.
+
+    Response:
+    Success: Returns a message that the official name matches.
+    Failure: Returns validation errors.
+    """
     data = json.loads(request.body)
     serializer = OfficialNameSerializer(data=data)
 
@@ -70,6 +116,17 @@ def check_official_name(request):
 
 @require_http_methods(["POST"])
 def check_phone_number(request):
+    """
+    Method: POST
+
+    Description: Checks if the phone number matches the service number, then sends an OTP for verification.
+    
+    Request: Expects service_number and phone_number in the request body.
+    
+    Response:
+    Success: If the phone number matches, sends an OTP and returns a success status.
+    Failure: Returns an error if the phone number does not match or the data is invalid.
+    """
     data = json.loads(request.body)
     service_number = data.get('service_number')
     phone_number = data.get('phone_number')
@@ -85,6 +142,17 @@ def check_phone_number(request):
 
 @require_http_methods(["POST"])
 def verify_phone_otp(request):
+    """
+    Method: POST
+    
+    Description: Verifies the phone OTP entered by the user.
+    
+    Request: Requires the service number and OTP sent to the phone.
+
+    Response:
+    Success: If the OTP is valid, returns success.
+    Failure: If the OTP is invalid, returns an error.
+    """
     data = json.loads(request.body)
     service_number = data.get('service_number')
     phone_otp = data.get('phone_otp')
@@ -99,6 +167,17 @@ def verify_phone_otp(request):
 
 @require_http_methods(["POST"])
 def check_email(request):
+    """
+    Method: POST
+
+    Description: Checks if the email matches the service number, then sends an OTP for verification.
+    
+    Request: Expects service_number and email.
+    
+    Response:
+    Success: Sends OTP to the email if it matches.
+    Failure: Returns an error if the email does not match or database issues arise.
+    """
     data = json.loads(request.body)
     service_number = data.get('service_number')
     email = data.get('email')
@@ -117,6 +196,17 @@ def check_email(request):
 
 @require_http_methods(["POST"])
 def verify_email_otp(request):
+    """
+    Method: POST
+
+    Description: Verifies the email OTP entered by the user.
+    
+    Request: Requires service_number and OTP sent to the email.
+    
+    Response:
+    Success: Returns a success message if OTP is valid.
+    Failure: Returns an error if OTP is invalid or if a database error occurs.
+    """
     data = json.loads(request.body)
     service_number = data.get('service_number')
     email_otp = data.get('email_otp')
@@ -134,6 +224,17 @@ def verify_email_otp(request):
 
 @require_http_methods(["POST"])
 def set_password(request):
+    """
+    Method: POST
+    
+    Description: Allows the user to set a new password by verifying their official name and password match.
+    
+    Request: Requires official_name, password, and confirm_password.
+    
+    Response:
+    Success: Password is set successfully if both passwords match.
+    Failure: Returns an error if passwords do not match or if data is invalid.
+    """
     data = json.loads(request.body)
     official_name = data.get('official_name')
     password = data.get('password')
@@ -151,6 +252,17 @@ def set_password(request):
 
 @require_http_methods(["POST"])
 def request_password_reset(request):
+    """
+    Method: POST
+    
+    Description: Sends an email with a password reset link containing a token and UID.
+    
+    Request: Requires the user's email to generate the reset link.
+    
+    Response:
+    Success: Sends an email with the reset link.
+    Failure: Returns an error if the email is not found or if sending fails.
+    """
     data = json.loads(request.body)
     email = data.get('email')
 
@@ -183,6 +295,17 @@ def request_password_reset(request):
 
 @require_http_methods(["POST"])
 def reset_password(request, uidb36, token):
+    """
+    Method: POST
+
+    Description: Resets the user's password using a token and UID sent in the password reset email.
+    
+    Request: Requires uidb36, token, new_password, and confirm_password.
+    
+    Response:
+    Success: Password is successfully reset.
+    Failure: Returns an error if the token is invalid, passwords do not match, or a database error occurs.
+    """
     data = json.loads(request.body)
     new_password = data.get('new_password')
     confirm_password = data.get('confirm_password')
@@ -206,15 +329,22 @@ def reset_password(request, uidb36, token):
     except DatabaseError as e:
         return JsonResponse({'error': f'Database error: {str(e)}'}, status=500)
 
-from django.contrib.auth import update_session_auth_hash
-from .serializers import UserProfileSerializer, ChangePasswordSerializer
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def user_profile(request):
     """
-    GET - Retrieve profile
-    PUT - Update profile
+    Method: GET, PUT
+
+    Description:
+    GET: Fetches the user's profile.
+    PUT: Updates the user's profile information.
+    
+    Request: For PUT, user profile data is passed in the body.
+    
+    Response:
+    Success: Profile data or updated profile is returned.
+    Failure: Returns errors if the profile is not found or if the data is invalid.
     """
     try:
         personnel = request.user
@@ -234,6 +364,17 @@ def user_profile(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
+    """
+    Method: PUT
+
+    Description: Allows authenticated users to change their password.
+    
+    Request: Requires the old password and new password.
+    
+    Response:
+    Success: Password is changed and session is updated.
+    Failure: Returns an error if the old password is incorrect or data is invalid.
+    """
     serializer = ChangePasswordSerializer(data=request.data)
 
     if serializer.is_valid():
@@ -253,6 +394,17 @@ def change_password(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_profile_picture(request):
+    """
+    Method: PUT
+
+    Description: Updates the user's profile picture.
+    
+    Request: Requires a new profile picture.
+    
+    Response:
+    Success: Profile picture is updated.
+    Failure: Returns errors if validation fails.
+    """
     personnel = request.user
     serializer = UserProfileSerializer(personnel, data=request.data, partial=True)
 
