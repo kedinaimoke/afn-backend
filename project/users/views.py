@@ -1,28 +1,23 @@
 from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
-from django.contrib.auth.hashers import make_password
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import update_session_auth_hash
-from django.db import IntegrityError, DatabaseError
+from django.db import DatabaseError
 from django.utils.http import base36_to_int, int_to_base36
 from django.core.mail import send_mail
 from django.conf import settings
-from project.otp_utils import generate_otp, send_otp, verify_otp, set_otp
+from project.otp_utils import verify_otp, set_otp
 from .models import Personnel
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import (UserRegistrationSerializer, UserLoginSerializer, OfficialNameSerializer,
-                           UserProfileSerializer, ChangePasswordSerializer, PersonnelSerializer,
-                           RegisteredUserSerializer)
-from rest_framework.permissions import IsAuthenticated
+                           UserProfileSerializer, ChangePasswordSerializer, PersonnelSerializer)
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.views import APIView
-from django.contrib.auth import update_session_auth_hash
 from django.contrib.sessions.models import Session
 from django.utils import timezone
-import json
 
 @api_view(['POST'])
 def register(request):
@@ -73,8 +68,7 @@ def login(request):
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@require_http_methods(["POST"])
-def check_service_number(request):
+class CheckServiceNumberAPIView(APIView):
     """
     Method: POST
     
@@ -86,18 +80,19 @@ def check_service_number(request):
     Success: Returns a success status if the service number exists.
     Failure: Returns an error if the service number is invalid or not found.
     """
-    data = json.loads(request.body)
-    service_number = data.get('service_number')
-
-    if service_number:
+    def post(self, request):
+        service_number = request.data.get('service_number')
+        
+        if not service_number:
+            return Response({'error': 'Invalid service number format'}, status=status.HTTP_400_BAD_REQUEST)
+        
         if Personnel.objects.filter(personnel_id=service_number).exists():
-            return JsonResponse({'status': 'success'}, status=200)
-        return JsonResponse({'error': 'Service number not found'}, status=400)
-    return JsonResponse({'error': 'Invalid service number format'}, status=400)
+            return Response({'status': 'success'}, status=status.HTTP_200_OK)
+        return Response({'error': 'Service number not found'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@require_http_methods(["POST"])
-def check_official_name(request):
+
+class CheckOfficialNameView(APIView):
     """
     Method: POST
     
@@ -109,16 +104,14 @@ def check_official_name(request):
     Success: Returns a message that the official name matches.
     Failure: Returns validation errors.
     """
-    data = json.loads(request.body)
-    serializer = OfficialNameSerializer(data=data)
+    def post(self, request):
+        serializer = OfficialNameSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response({'status': 'Official name matches'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    if serializer.is_valid():
-        return JsonResponse({'status': 'Official name matches'}, status=200)
-    return JsonResponse(serializer.errors, status=400)
 
-
-@require_http_methods(["POST"])
-def check_phone_number(request):
+class CheckPhoneNumberView(APIView):
     """
     Method: POST
 
@@ -131,21 +124,20 @@ def check_phone_number(request):
     Success: If the phone number matches, sends an OTP and returns a success status.
     Failure: Returns an error if the phone number does not match or the data is invalid.
     """
-    data = json.loads(request.body)
-    service_number = data.get('service_number')
-    phone_number = data.get('phone_number')
+    def post(self, request):
+        service_number = request.data.get('service_number')
+        phone_number = request.data.get('phone_number')
+        
+        if service_number and phone_number:
+            personnel = Personnel.objects.filter(personnel_id=service_number, phone_number=phone_number).first()
+            if personnel:
+                set_otp(personnel)
+                return Response({'status': 'success'}, status=status.HTTP_200_OK)
+            return Response({'error': 'Phone number does not match'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if service_number and phone_number:
-        personnel = Personnel.objects.filter(personnel_id=service_number, phone_number=phone_number).first()
-        if personnel:
-            set_otp(personnel)
-            return JsonResponse({'status': 'success'}, status=200)
-        return JsonResponse({'error': 'Phone number does not match'}, status=400)
-    return JsonResponse({'error': 'Invalid data'}, status=400)
 
-
-@require_http_methods(["POST"])
-def verify_phone_otp(request):
+class VerifyPhoneOTPView(APIView):
     """
     Method: POST
     
@@ -157,20 +149,27 @@ def verify_phone_otp(request):
     Success: If the OTP is valid, returns success.
     Failure: If the OTP is invalid, returns an error.
     """
-    data = json.loads(request.body)
-    service_number = data.get('service_number')
-    phone_otp = data.get('phone_otp')
+    permission_classes = [AllowAny]
 
-    if service_number and phone_otp:
-        personnel = Personnel.objects.filter(personnel_id=service_number).first()
-        if personnel and verify_otp(personnel, phone_otp):
-            return JsonResponse({'status': 'success'}, status=200)
-        return JsonResponse({'error': 'Invalid OTP'}, status=400)
-    return JsonResponse({'error': 'Invalid data'}, status=400)
+    def post(self, request):
+        service_number = request.data.get('service_number')
+        otp = request.data.get('otp')
+
+        if not service_number or not otp:
+            return JsonResponse({'error': 'Service number and OTP are required.'}, status=400)
+
+        personnel = Personnel.objects.filter(service_number=service_number).first()
+        
+        if not personnel:
+            return JsonResponse({'error': 'Personnel not found.'}, status=404)
+
+        if verify_otp(personnel, otp):
+            return JsonResponse({'success': 'OTP verified successfully.'}, status=200)
+        else:
+            return JsonResponse({'error': 'Invalid OTP.'}, status=400)
 
 
-@require_http_methods(["POST"])
-def check_email(request):
+class CheckEmailView(APIView):
     """
     Method: POST
 
@@ -182,24 +181,24 @@ def check_email(request):
     Success: Sends OTP to the email if it matches.
     Failure: Returns an error if the email does not match or database issues arise.
     """
-    data = json.loads(request.body)
-    service_number = data.get('service_number')
-    email = data.get('email')
+    def post(self, request):
+        service_number = request.data.get('service_number')
+        email = request.data.get('email')
+        
+        if service_number and email:
+            try:
+                personnel = Personnel.objects.filter(service_number=service_number, email=email).first()
+                if personnel:
+                    set_otp(personnel)
+                    return Response({'status': 'success'}, status=status.HTTP_200_OK)
+                return Response({'error': 'Email does not match'}, status=status.HTTP_400_BAD_REQUEST)
+            except DatabaseError as e:
+                return Response({'error': f'Database error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if service_number and email:
-        try:
-            personnel = Personnel.objects.filter(service_number=service_number, email=email).first()
-            if personnel:
-                set_otp(personnel)
-                return JsonResponse({'status': 'success'}, status=200)
-            return JsonResponse({'error': 'Email does not match'}, status=400)
-        except DatabaseError as e:
-            return JsonResponse({'error': f'Database error: {str(e)}'}, status=500)
-    return JsonResponse({'error': 'Invalid data'}, status=400)
 
 
-@require_http_methods(["POST"])
-def verify_email_otp(request):
+class VerifyEmailOTPView(APIView):
     """
     Method: POST
 
@@ -211,23 +210,22 @@ def verify_email_otp(request):
     Success: Returns a success message if OTP is valid.
     Failure: Returns an error if OTP is invalid or if a database error occurs.
     """
-    data = json.loads(request.body)
-    service_number = data.get('service_number')
-    email_otp = data.get('email_otp')
+    def post(self, request):
+        service_number = request.data.get('service_number')
+        email_otp = request.data.get('email_otp')
 
-    if service_number and email_otp:
-        try:
-            personnel = Personnel.objects.filter(service_number=service_number).first()
-            if verify_otp(personnel, email_otp):
-                return JsonResponse({'status': 'success'}, status=200)
-            return JsonResponse({'error': 'Invalid OTP'}, status=400)
-        except DatabaseError as e:
-            return JsonResponse({'error': f'Database error: {str(e)}'}, status=500)
-    return JsonResponse({'error': 'Invalid data'}, status=400)
+        if service_number and email_otp:
+            try:
+                personnel = Personnel.objects.filter(service_number=service_number).first()
+                if verify_otp(personnel, email_otp):
+                    return Response({'status': 'success'}, status=status.HTTP_200_OK)
+                return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+            except DatabaseError as e:
+                return Response({'error': f'Database error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@require_http_methods(["POST"])
-def set_password(request):
+class SetPasswordView(APIView):
     """
     Method: POST
     
@@ -240,23 +238,25 @@ def set_password(request):
     Success: Password is set successfully if both passwords match.
     Failure: Returns an error if passwords do not match or if data is invalid.
     """
-    data = json.loads(request.body)
-    official_name = data.get('official_name')
-    password = data.get('password')
-    confirm_password = data.get('confirm_password')
+    def post(self, request):
+        official_name = request.data.get('official_name')
+        password = request.data.get('password')
+        confirm_password = request.data.get('confirm_password')
 
-    if password and confirm_password:
-        if password == confirm_password:
-            personnel = Personnel.objects.get(official_name=official_name)
-            personnel.password = make_password(password)
-            personnel.save()
-            return JsonResponse({'status': 'Password set successfully'}, status=200)
-        return JsonResponse({'error': 'Passwords do not match'}, status=400)
-    return JsonResponse({'error': 'Invalid data'}, status=400)
+        if password and confirm_password:
+            if password == confirm_password:
+                try:
+                    personnel = Personnel.objects.get(official_name=official_name)
+                    personnel.set_password(password)
+                    personnel.save()
+                    return Response({'status': 'Password set successfully'}, status=status.HTTP_200_OK)
+                except Personnel.DoesNotExist:
+                    return Response({'error': 'Personnel not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@require_http_methods(["POST"])
-def request_password_reset(request):
+class RequestPasswordResetView(APIView):
     """
     Method: POST
     
@@ -268,38 +268,37 @@ def request_password_reset(request):
     Success: Sends an email with the reset link.
     Failure: Returns an error if the email is not found or if sending fails.
     """
-    data = json.loads(request.body)
-    email = data.get('email')
+    def post(self, request):
+        email = request.data.get('email')
 
-    if email:
-        try:
-            personnel = Personnel.objects.get(email=email)
-        except Personnel.DoesNotExist:
-            return JsonResponse({'error': 'Email not found'}, status=400)
-        except DatabaseError as e:
-            return JsonResponse({'error': f'Database error: {str(e)}'}, status=500)
+        if email:
+            try:
+                personnel = Personnel.objects.get(email=email)
+            except Personnel.DoesNotExist:
+                return Response({'error': 'Email not found'}, status=status.HTTP_400_BAD_REQUEST)
+            except DatabaseError as e:
+                return Response({'error': f'Database error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        try:
-            token = default_token_generator.make_token(personnel)
-            uid = int_to_base36(personnel.pk)
-            reset_link = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/"
+            try:
+                token = default_token_generator.make_token(personnel)
+                uid = int_to_base36(personnel.pk)
+                reset_link = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}/"
 
-            send_mail(
-                'Password Reset Request',
-                f'Please use the following link to reset your password: {reset_link}',
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
-            )
+                send_mail(
+                    'Password Reset Request',
+                    f'Please use the following link to reset your password: {reset_link}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
 
-            return JsonResponse({'status': 'Password reset email sent'}, status=200)
-        except Exception as e:
-            return JsonResponse({'error': f'Failed to send email: {str(e)}'}, status=500)
-    return JsonResponse({'error': 'Invalid email'}, status=400)
+                return Response({'status': 'Password reset email sent'}, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': 'Invalid email'}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@require_http_methods(["POST"])
-def reset_password(request, uidb36, token):
+class ResetPasswordView(APIView):
     """
     Method: POST
 
@@ -312,28 +311,28 @@ def reset_password(request, uidb36, token):
     Failure: Returns an error if the token is invalid, passwords do not match, 
     or a database error occurs.
     """
-    data = json.loads(request.body)
-    new_password = data.get('new_password')
-    confirm_password = data.get('confirm_password')
+    def post(self, request, uidb36, token):
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
 
-    if new_password != confirm_password:
-        return JsonResponse({'error': 'Passwords do not match'}, status=400)
+        if new_password != confirm_password:
+            return Response({'error': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        personnel_id = int(base36_to_int(uidb36))
-        personnel = Personnel.objects.get(pk=personnel_id)
-    except (Personnel.DoesNotExist, ValueError):
-        return JsonResponse({'error': 'Invalid link'}, status=400)
+        try:
+            personnel_id = base36_to_int(uidb36)
+            personnel = Personnel.objects.get(pk=personnel_id)
+        except (Personnel.DoesNotExist, ValueError):
+            return Response({'error': 'Invalid link'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not default_token_generator.check_token(personnel, token):
-        return JsonResponse({'error': 'Invalid or expired token'}, status=400)
+        if not default_token_generator.check_token(personnel, token):
+            return Response({'error': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        personnel.set_password(new_password)
-        personnel.save()
-        return JsonResponse({'status': 'Password successfully reset'}, status=200)
-    except DatabaseError as e:
-        return JsonResponse({'error': f'Database error: {str(e)}'}, status=500)
+        try:
+            personnel.set_password(new_password)
+            personnel.save()
+            return Response({'status': 'Password successfully reset'}, status=status.HTTP_200_OK)
+        except DatabaseError as e:
+            return Response({'error': f'Database error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET', 'PUT'])
@@ -476,36 +475,6 @@ class PersonnelDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [TokenAuthentication]
 
-def check_registered_users(request):
-    """
-    Check which phone numbers belong to registered users.
-
-    Method: GET
-    
-    Request:
-    - Query parameter `phone_numbers`: A list of phone numbers to check.
-
-    Response:
-    - Returns a JSON response containing the registered users with their IDs, phone numbers, official names, service numbers, and emails.
-    """
-    phone_numbers = request.GET.getlist('phone_numbers')
-    registered_users = Personnel.objects.filter(phone_number__in=phone_numbers)
-    
-    response_data = {
-        "registered_users": [
-            {
-                "id": user.id,
-                "phone_number": user.phone_number,
-                "name": user.official_name,
-                "service_number": user.service_number,
-                "email": user.email
-            } 
-            for user in registered_users
-        ]
-    }
-    
-    return JsonResponse(response_data)
-
 class CheckRegisteredUsers(APIView):
     """
     API view to check which phone numbers belong to registered users.
@@ -518,13 +487,17 @@ class CheckRegisteredUsers(APIView):
     Response:
     - Returns a JSON response containing the registered users with their IDs, phone numbers, official names, service numbers, and emails.    
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
-    def get(self, request):
-        phone_numbers = request.query_params.getlist('phone_numbers')
-        registered_users = Personnel.objects.filter(phone_number__in=phone_numbers)
-        serializer = RegisteredUserSerializer(registered_users, many=True)
-        
-        return Response({
-            "registered_users": serializer.data
-        })
+    def post(self, request):
+        service_number = request.data.get('service_number')
+
+        if not service_number:
+            return JsonResponse({'error': 'Service number is required.'}, status=400)
+
+        personnel = Personnel.objects.filter(service_number=service_number).first()
+
+        if personnel:
+            return JsonResponse({'success': 'Personnel found.'}, status=200)
+        else:
+            return JsonResponse({'error': 'No personnel found for this service number.'}, status=404)

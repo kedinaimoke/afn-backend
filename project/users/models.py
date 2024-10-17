@@ -2,9 +2,9 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 
 class PersonnelManager(BaseUserManager):
-    def create_user(self, email, first_name, middle_name, surname, service_number, password=None, **extra_fields):
+    def create_user(self, email, official_name, service_number, password=None, **extra_fields):
         """
-        Create and return a regular user with the provided details.
+        Create and return a regular user with the provided official name and service number.
         """
         if not email:
             raise ValueError('The Email field must be set')
@@ -12,9 +12,7 @@ class PersonnelManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(
             email=email,
-            first_name=first_name,
-            middle_name=middle_name,
-            surname=surname,
+            official_name=official_name,
             service_number=service_number,
             **extra_fields
         )
@@ -22,9 +20,9 @@ class PersonnelManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, first_name, surname, password=None, **extra_fields):
+    def create_superuser(self, email, official_name, password=None, **extra_fields):
         """
-        Create and return a superuser with an email and password.
+        Create and return a superuser with an email, official name, and password.
         """
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
@@ -34,7 +32,7 @@ class PersonnelManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
 
-        return self.create_user(email, first_name, surname, password, **extra_fields)
+        return self.create_user(email, official_name, service_number=None, password=password, **extra_fields)
 
 
 class ArmOfService(models.Model):
@@ -90,10 +88,8 @@ class Rank(models.Model):
 
 class Personnel(AbstractBaseUser, PermissionsMixin):
     personnel_id = models.AutoField(primary_key=True)
-    first_name = models.CharField(max_length=100, null=False)
-    middle_name = models.CharField(max_length=100, blank=True, null=True)
-    surname = models.CharField(max_length=100, null=False)
-    email = models.EmailField(max_length=100, unique=True)
+    official_name = models.CharField(max_length=255, null=True, help_text="Full official name of the user.")
+    email = models.EmailField(max_length=100, unique=True, null=True, blank=True)
     phone_number = models.CharField(max_length=15)
     service_number = models.CharField(max_length=50, unique=True, null=True)
     rank = models.ForeignKey(Rank, on_delete=models.SET_NULL, null=True, related_name='personnel')
@@ -108,19 +104,13 @@ class Personnel(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['first_name', 'surname']
+    REQUIRED_FIELDS = ['official_name']
 
     objects = PersonnelManager()
 
-    @property
-    def official_name(self):
-        initials = self.first_name[0].upper()
-        if self.middle_name:
-            initials += self.middle_name[0].upper()
-        return f"{initials} {self.surname}"
-
     def __str__(self):
-        return self.email
+        return self.email if self.email else self.official_name
+
 
 
 class Appointment(models.Model):

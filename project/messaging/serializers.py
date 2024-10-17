@@ -36,17 +36,22 @@ class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     recipient = UserSerializer(read_only=True)
     is_starred = serializers.SerializerMethodField()
+    
+    media_url = serializers.URLField(required=False)
 
     class Meta:
         model = Message
         fields = ['id', 'sender', 'recipient', 'content', 'media_type', 'media_url', 'is_read', 'timestamp']
-        read_only_fields = ['sender', 'timestamp'] 
+        read_only_fields = ['sender', 'recipient', 'timestamp']
     
     def create(self, validated_data):
         validated_data['sender'] = self.context['request'].user
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
+        if 'recipient' in validated_data and validated_data['recipient'] != self.context['request'].user:
+            raise serializers.ValidationError("You do not have permission to modify this message.")
+        
         instance.content = validated_data.get('content', instance.content)
         instance.media_type = validated_data.get('media_type', instance.media_type)
         instance.media_url = validated_data.get('media_url', instance.media_url)
