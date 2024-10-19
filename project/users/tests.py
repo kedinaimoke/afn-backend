@@ -124,3 +124,218 @@ class UserProfileTests(APITestCase):
         print(f"Testing official name validation for service number: {data['service_number']}")  # Debug statement
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_check_service_number_valid(self):
+        """Test the check_service_number endpoint with a valid service number"""
+        url = reverse('check_service_number')
+        data = {
+            'service_number': self.service_number
+        }
+        print(f"Testing valid service number: {data['service_number']}")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, {'status': 'success'})
+
+    def test_check_service_number_invalid(self):
+        """Test the check_service_number endpoint with an invalid service number"""
+        url = reverse('check_service_number')
+        data = {
+            'service_number': "654321"  # Invalid service number
+        }
+        print(f"Testing invalid service number: {data['service_number']}")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Service number not found'})
+
+    def test_check_service_number_missing(self):
+        """Test the check_service_number endpoint with no service number"""
+        url = reverse('check_service_number')
+        data = {}
+        print("Testing missing service number")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+        
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Invalid service number format'})
+    
+    def test_check_registered_users(self):
+        """Test the check_registered_users endpoint with valid phone numbers"""
+        url = reverse('check_registered_users')
+        phone_numbers = ["08012345678", "08087654321"]
+        query_string = f"?phone_numbers={','.join(phone_numbers)}"
+        print(f"Testing with phone numbers: {phone_numbers}")  # Debug statement
+        response = self.client.get(f"{url}{query_string}")
+
+        # Expected response data
+        expected_data = {
+            "registered_users": [
+                {
+                    "id": self.personnel1.id,
+                    "phone_number": self.personnel1.phone_number,
+                    "name": self.personnel1.official_name,
+                    "service_number": self.personnel1.service_number,
+                    "email": self.personnel1.email,
+                },
+                {
+                    "id": self.personnel2.id,
+                    "phone_number": self.personnel2.phone_number,
+                    "name": self.personnel2.official_name,
+                    "service_number": self.personnel2.service_number,
+                    "email": self.personnel2.email,
+                }
+            ]
+        }
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, expected_data)
+
+    def test_check_registered_users_partial_match(self):
+        """Test the check_registered_users endpoint with one matching and one non-matching phone number"""
+        url = reverse('check_registered_users')
+        phone_numbers = ["08012345678", "08099999999"]  # One valid, one invalid
+        query_string = f"?phone_numbers={','.join(phone_numbers)}"
+        print(f"Testing with partial phone numbers: {phone_numbers}")  # Debug statement
+        response = self.client.get(f"{url}{query_string}")
+
+        # Expected response data (only matching personnel1)
+        expected_data = {
+            "registered_users": [
+                {
+                    "id": self.personnel1.id,
+                    "phone_number": self.personnel1.phone_number,
+                    "name": self.personnel1.official_name,
+                    "service_number": self.personnel1.service_number,
+                    "email": self.personnel1.email,
+                }
+            ]
+        }
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, expected_data)
+
+    def test_check_registered_users_no_match(self):
+        """Test the check_registered_users endpoint with no matching phone numbers"""
+        url = reverse('check_registered_users')
+        phone_numbers = ["08099999999", "08088888888"]  # No valid phone numbers
+        query_string = f"?phone_numbers={','.join(phone_numbers)}"
+        print(f"Testing with non-matching phone numbers: {phone_numbers}")  # Debug statement
+        response = self.client.get(f"{url}{query_string}")
+
+        # Expected response data (no users found)
+        expected_data = {"registered_users": []}
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, expected_data)
+    
+    def test_check_email_success(self):
+        """Test the check_email endpoint with matching service number and email"""
+        url = reverse('check_email')
+        data = {
+            'service_number': self.personnel.service_number,
+            'email': self.personnel.email
+        }
+        print(f"Testing email check with service number: {data['service_number']}, email: {data['email']}")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, {'status': 'success'})
+
+    def test_check_email_invalid_email(self):
+        """Test the check_email endpoint with a non-matching email"""
+        url = reverse('check_email')
+        data = {
+            'service_number': self.personnel.service_number,
+            'email': 'wrong.email@example.com'  # Invalid email
+        }
+        print(f"Testing email check with non-matching email: {data['email']}")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Email does not match'})
+
+    def test_check_email_invalid_data(self):
+        """Test the check_email endpoint with missing data"""
+        url = reverse('check_email')
+        data = {
+            'service_number': '',  # Missing service number
+            'email': ''
+        }
+        print("Testing email check with invalid data")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Invalid data'})
+
+    def test_check_email_database_error(self):
+        """Test the check_email endpoint when a database error occurs"""
+        url = reverse('check_email')
+        data = {
+            'service_number': self.personnel.service_number,
+            'email': self.personnel.email
+        }
+        print("Testing email check with database error")  # Debug statement
+
+        # Simulate a database error by patching the Personnel.objects.filter method
+        with self.assertRaises(DatabaseError):
+            with patch('app.models.Personnel.objects.filter', side_effect=DatabaseError('Test DB error')):
+                response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+                self.assertEqual(response.status_code, 500)
+                self.assertJSONEqual(response.content, {'error': 'Database error: Test DB error'})
+
+    def test_set_password_success(self):
+        """Test the set_password endpoint with matching passwords"""
+        url = reverse('set_password')
+        data = {
+            'official_name': self.personnel.official_name,
+            'password': "NewPassword@123",
+            'confirm_password': "NewPassword@123"
+        }
+        print(f"Testing password set with official name: {data['official_name']}")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, {'status': 'Password set successfully'})
+
+        # Check that the password was updated correctly
+        self.personnel.refresh_from_db()
+        self.assertTrue(check_password("NewPassword@123", self.personnel.password))
+
+    def test_set_password_mismatch(self):
+        """Test the set_password endpoint with non-matching passwords"""
+        url = reverse('set_password')
+        data = {
+            'official_name': self.personnel.official_name,
+            'password': "NewPassword@123",
+            'confirm_password': "DifferentPassword@123"
+        }
+        print(f"Testing password set with mismatching passwords")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Passwords do not match'})
+
+    def test_set_password_invalid_data(self):
+        """Test the set_password endpoint with missing data"""
+        url = reverse('set_password')
+        data = {
+            'official_name': self.personnel.official_name,
+            'password': "",  # Missing password
+            'confirm_password': ""
+        }
+        print(f"Testing password set with invalid data")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'error': 'Invalid data'})
+
+    def test_set_password_user_not_found(self):
+        """Test the set_password endpoint with non-existing official name"""
+        url = reverse('set_password')
+        data = {
+            'official_name': "Nonexistent User",  # Invalid official name
+            'password': "NewPassword@123",
+            'confirm_password': "NewPassword@123"
+        }
+        print(f"Testing password set with non-existing official name")  # Debug statement
+        response = self.client.post(url, data=json.dumps(data), content_type='application/json')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertJSONEqual(response.content, {'error': 'User not found'})
