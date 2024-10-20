@@ -1,20 +1,25 @@
 import random
 from django.core.mail import send_mail
 from django.conf import settings
-from django.utils.crypto import get_random_string
 from twilio.rest import Client
 from datetime import timezone, timedelta
 
 def generate_otp():
     """Generates a random 6-digit OTP."""
-    return get_random_string(length=6, allowed_chars='1234567890')
+    return random.randint(100000, 999999)
 
 def send_otp_via_email(email, otp):
     """Sends OTP via email."""
+    otp = generate_otp()
+    
     subject = 'Your OTP Code'
-    message = f'Your OTP code is {otp}. Please use it to verify your identity.'
-    from_email = settings.DEFAULT_FROM_EMAIL
-    send_mail(subject, message, from_email, [email])
+    message = f'Your One Time Password (OTP) is {otp}. Please use this to complete your registration.'
+    email_from = 'ijkedina@gmail.com'
+    recipient_list = [email]
+    
+    send_mail(subject, message, email_from, recipient_list)
+
+    return otp
 
 def send_otp_via_sms(phone_number, otp):
     """Sends OTP via SMS using Twilio."""
@@ -25,7 +30,7 @@ def send_otp_via_sms(phone_number, otp):
     try:
         message = client.messages.create(
             body=f'Your OTP code is {otp}. Please use it to verify your identity.',
-            from_='your_twilio_phone_number',
+            from_='the_twilio_phone_number',
             to=phone_number
         )
     except Exception as e:

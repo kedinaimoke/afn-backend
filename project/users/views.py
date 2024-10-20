@@ -5,7 +5,7 @@ from django.db import DatabaseError
 from django.utils.http import base36_to_int, int_to_base36
 from django.core.mail import send_mail
 from django.conf import settings
-from project.otp_utils import verify_otp, set_otp
+from project.otp_utils import verify_otp, set_otp, send_otp_via_email
 from .models import Personnel
 from rest_framework import status, generics
 from rest_framework.response import Response
@@ -19,8 +19,7 @@ from rest_framework.views import APIView
 from django.contrib.sessions.models import Session
 from django.utils import timezone
 
-@api_view(['POST'])
-def register(request):
+class RegisterView(APIView):
     """
     Method: POST
     
@@ -32,14 +31,20 @@ def register(request):
     Success: Returns a success message and a status code of 201 Created.
     Failure: Returns validation errors with a status code 400 Bad Request.
     """
-    serializer = UserRegistrationSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.save()
-        return Response({'status': 'User registered successfully!'}, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request):
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
 
-@api_view(['POST'])
-def login(request):
+            email = serializer.data['email']
+            otp = send_otp_via_email(email)
+
+            return Response({
+                'status': 'User registered successfully!',
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LoginView(APIView):
     """
     Method: POST
 
@@ -51,22 +56,24 @@ def login(request):
     Success: Returns refresh and access JWT tokens, and a 200 OK status.
     Failure: Returns validation errors with a status code 400 Bad Request.
     """
-    serializer = UserLoginSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
+    
+    def post(self, request):
+        serializer = UserLoginSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
 
-        existing_sessions = Session.objects.filter(expire_date__gt=timezone.now())
-        for session in existing_sessions:
-            if session.get_decoded().get('_auth_user_id') == str(user.id):
-                session.delete()
+            existing_sessions = Session.objects.filter(expire_date__gt=timezone.now())
+            for session in existing_sessions:
+                if session.get_decoded().get('_auth_user_id') == str(user.id):
+                    session.delete()
 
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        }, status=status.HTTP_200_OK)
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }, status=status.HTTP_200_OK)
 
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CheckServiceNumberAPIView(APIView):
     """
@@ -212,7 +219,7 @@ class VerifyEmailOTPView(APIView):
     """
     def post(self, request):
         service_number = request.data.get('service_number')
-        email_otp = request.data.get('email_otp')
+        email_otp = request.data.get('otp')
 
         if service_number and email_otp:
             try:
