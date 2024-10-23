@@ -134,11 +134,11 @@ class CheckPhoneNumberView(APIView):
     def post(self, request):
         service_number = request.data.get('service_number')
         phone_number = request.data.get('phone_number')
-        
+
         if service_number and phone_number:
             personnel = Personnel.objects.filter(personnel_id=service_number, phone_number=phone_number).first()
             if personnel:
-                set_otp(personnel)
+                # set_otp(personnel)
                 return Response({'status': 'success'}, status=status.HTTP_200_OK)
             return Response({'error': 'Phone number does not match'}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'error': 'Invalid data'}, status=status.HTTP_400_BAD_REQUEST)
@@ -166,14 +166,13 @@ class VerifyPhoneOTPView(APIView):
             return JsonResponse({'error': 'Service number and OTP are required.'}, status=400)
 
         personnel = Personnel.objects.filter(service_number=service_number).first()
-        
+
         if not personnel:
             return JsonResponse({'error': 'Personnel not found.'}, status=404)
 
-        if verify_otp(personnel, otp):
-            return JsonResponse({'success': 'OTP verified successfully.'}, status=200)
-        else:
-            return JsonResponse({'error': 'Invalid OTP.'}, status=400)
+        # if verify_otp(personnel, otp):
+        #     return JsonResponse({'success': 'OTP verified successfully.'}, status=200)
+        return JsonResponse({'error': 'Invalid OTP (SMS OTP bypassed).'}, status=400)
 
 
 class CheckEmailView(APIView):
@@ -342,89 +341,85 @@ class ResetPasswordView(APIView):
             return Response({'error': f'Database error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET', 'PUT'])
-@permission_classes([IsAuthenticated])
-def user_profile(request):
-    """
-    Method: GET, PUT
 
-    Description:
-    GET: Fetches the user's profile.
-    PUT: Updates the user's profile information.
-    
-    Request: For PUT, user profile data is passed in the body.
-    
-    Response:
-    Success: Profile data or updated profile is returned.
-    Failure: Returns errors if the profile is not found or if the data is invalid.
-    """
-    try:
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        """
+        Method: GET
+
+        Description: Fetches the user's profile.
+        Response: Profile data is returned.
+        """
         personnel = request.user
-        if request.method == 'GET':
-            serializer = UserProfileSerializer(personnel)
-            return Response(serializer.data)
-        elif request.method == 'PUT':
-            serializer = UserProfileSerializer(personnel, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response({'status': 'Profile updated successfully'}, status=status.HTTP_200_OK)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    except Personnel.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileSerializer(personnel)
+        return Response(serializer.data)
 
+    def put(self, request, *args, **kwargs):
+        """
+        Method: PUT
 
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def change_password(request):
-    """
-    Method: PUT
-
-    Description: Allows authenticated users to change their password.
-    
-    Request: Requires the old password and new password.
-    
-    Response:
-    Success: Password is changed and session is updated.
-    Failure: Returns an error if the old password is incorrect or data is invalid.
-    """
-    serializer = ChangePasswordSerializer(data=request.data)
-
-    if serializer.is_valid():
+        Description: Updates the user's profile information.
+        Request: User profile data is passed in the body.
+        Response: Updated profile is returned or errors if invalid.
+        """
         personnel = request.user
-        if not personnel.check_password(serializer.validated_data['old_password']):
-            return Response({'error': 'Old password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = UserProfileSerializer(personnel, data=request.data, partial=True)
 
-        personnel.set_password(serializer.validated_data['new_password'])
-        personnel.save()
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'status': 'Profile updated successfully'}, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        update_session_auth_hash(request, personnel)
 
-        return Response({'status': 'Password updated successfully'}, status=status.HTTP_200_OK)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
 
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_profile_picture(request):
-    """
-    Method: PUT
+    def put(self, request, *args, **kwargs):
+        """
+        Method: PUT
 
-    Description: Updates the user's profile picture.
-    
-    Request: Requires a new profile picture.
-    
-    Response:
-    Success: Profile picture is updated.
-    Failure: Returns errors if validation fails.
-    """
-    personnel = request.user
-    serializer = UserProfileSerializer(personnel, data=request.data, partial=True)
+        Description: Allows authenticated users to change their password.
+        Request: Requires the old password and new password.
+        Response: Success or error message based on validation.
+        """
+        serializer = ChangePasswordSerializer(data=request.data)
 
-    if serializer.is_valid():
-        serializer.save()
-        return Response({'status': 'Profile picture updated successfully'}, status=status.HTTP_200_OK)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if serializer.is_valid():
+            personnel = request.user
+            if not personnel.check_password(serializer.validated_data['old_password']):
+                return Response({'error': 'Old password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+
+            personnel.set_password(serializer.validated_data['new_password'])
+            personnel.save()
+            update_session_auth_hash(request, personnel)  # Update the session with the new password
+
+            return Response({'status': 'Password updated successfully'}, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UpdateProfilePictureView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, *args, **kwargs):
+        """
+        Method: PUT
+
+        Description: Updates the user's profile picture.
+        Request: Requires a new profile picture.
+        Response: Success or error message based on validation.
+        """
+        personnel = request.user
+        serializer = UserProfileSerializer(personnel, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'status': 'Profile picture updated successfully'}, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class PersonnelListCreateView(generics.ListCreateAPIView):
     """
