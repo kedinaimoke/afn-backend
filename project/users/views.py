@@ -48,7 +48,7 @@ class LoginView(APIView):
     """
     Method: POST
 
-    Description: Authenticates a user based on their credentials (e.g., username/password).
+    Description: Authenticates a user based on their credentials (e.g., service number/password).
     
     Request: Requires the user's official name and password.
     

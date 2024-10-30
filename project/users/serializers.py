@@ -60,19 +60,19 @@ class UserLoginSerializer(serializers.Serializer):
     """
     Serializer for user login.
 
-    - Authenticates user based on official_name and password.
+    - Authenticates user based on service_number and password.
     """
-    official_name = serializers.CharField(max_length=255)
+    service_number = serializers.CharField(max_length=50)
     password = serializers.CharField(max_length=128, write_only=True)
 
     def validate(self, data):
-        official_name = data.get('official_name')
+        service_number = data.get('service_number')
         password = data.get('password')
 
-        user = authenticate(request=self.context.get('request'), official_name=official_name, password=password)
+        user = authenticate(request=self.context.get('request'), service_number=service_number, password=password)
 
         if user is None:
-            raise serializers.ValidationError("Invalid official name or password.")
+            raise serializers.ValidationError("Invalid service number or password.")
 
         data['user'] = user
         return data
